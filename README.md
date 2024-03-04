@@ -16,6 +16,8 @@ We recommend you to follow https://github.com/NVIDIA/MinkowskiEngine to setup th
 
 ## Pre-trained models
 We trained seven models with seven different parameters.
+https://pan.baidu.com/s/1h-xs_orDr6CEdggOlVOAOA 
+code：ABCD
 
 ## Usage
 

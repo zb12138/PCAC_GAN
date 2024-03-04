@@ -1,0 +1,35 @@
+  data_file: 'path/to/your/data.h5'
+  num_points_per_object: 2048
+  batch_size: 32
+  shuffle: True
+  repeat: True
+
+model_params:
+  G:
+    x_dim: 3
+    z1_dim: 100
+    z2_dim: 50
+  D:
+    x_dim: 3
+    z1_dim: 100
+    d_dim: 64
+    o_dim: 1
+  G_inv:
+    x_dim: 3
+    d_dim: 64
+    z1_dim: 100
+    pool: 'mean'
+
+trainer_params:
+  num_iters: 10000
+  critic_steps: 5
+  optimizer: 'adam'
+  d_lr: 0.0001
+  g_lr: 0.0001
+  inv_lr: 0.0001
+  out_dir: 'path/to/output/dir'
+  phi_adv: 1.0
+  phi_dec: 0.5
+  lambda_rd: 0.01
+  obj: [1, 2, 3] 
+  n_obj: 10

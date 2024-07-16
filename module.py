@@ -1,5 +1,3 @@
-import math
-import tensorflow as tf
 import torch.nn as tnn
 from collections import OrderedDict
 
@@ -46,7 +44,7 @@ class Module(object):
 
     def _addindent(s_, numSpaces):
         s = s_.split('\n')
-        if len(s) == 1:
+        if len(s) is 1:
             return s_
         first = s.pop(0)
         s = [(numSpaces * ' ') + line for line in s]

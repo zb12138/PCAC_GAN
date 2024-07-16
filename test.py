@@ -9,13 +9,17 @@ from nn import Encoder, Decoder
 from data_loader import PointCloudDataset
 from torch.utils.data import DataLoader
 from pc_error import pc_error
+from entropy_model import EntropyBottleneck
+from AVRPM import AVRPM  
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def load_model(encoder, decoder, checkpoint_path):
+def load_model(encoder, decoder, entropy_bottleneck, avrpm, checkpoint_path):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     encoder.load_state_dict(checkpoint['encoder'])
     decoder.load_state_dict(checkpoint['decoder'])
+    entropy_bottleneck.load_state_dict(checkpoint['entropy_bottleneck'])
+    avrpm.load_state_dict(checkpoint['avrpm'])  
 
 def save_ply(filename, coords, features):
     with open(filename, 'w') as f:
@@ -32,7 +36,7 @@ def save_ply(filename, coords, features):
         for i in range(coords.shape[0]):
             f.write(f"{coords[i, 0]} {coords[i, 1]} {coords[i, 2]} {int(features[i, 0])} {int(features[i, 1])} {int(features[i, 2])}\n")
 
-def test(filedir, ckptdir, outdir, resultdir, scaling_factor=1.0, res=1024):
+def test(filedir, ckptdir, outdir, resultdir, channel, scaling_factor=1.0, res=1024):
     # Prepare directories
     if not os.path.exists(outdir): 
         os.makedirs(outdir)
@@ -40,7 +44,7 @@ def test(filedir, ckptdir, outdir, resultdir, scaling_factor=1.0, res=1024):
         os.makedirs(resultdir)
 
     # Load data
-    dataset = PointCloudDataset(filedir)
+    dataset = PointCloudDataset(filedir, channel=channel)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     # Output filename
@@ -48,9 +52,11 @@ def test(filedir, ckptdir, outdir, resultdir, scaling_factor=1.0, res=1024):
 
     encoder = Encoder(dimension=3).to(device)
     decoder = Decoder(dimension=3).to(device)
+    entropy_bottleneck = EntropyBottleneck(channels=1).to(device)
+    avrpm = AVRPM(low_res=8, high_res=16).to(device)
 
     # Load trained model
-    load_model(encoder, decoder, ckptdir)
+    load_model(encoder, decoder, entropy_bottleneck, avrpm, ckptdir)
 
     all_results = pd.DataFrame()
 
@@ -62,16 +68,18 @@ def test(filedir, ckptdir, outdir, resultdir, scaling_factor=1.0, res=1024):
         feats = (feats - feats.min()) / (feats.max() - feats.min())  # Normalize features to [0, 1]
         point_cloud = ME.SparseTensor(feats, coordinates=coords)
 
-        compressed = encoder(point_cloud)
-        reconstructed = decoder(compressed)
+        high_res_voxels, low_res_voxels = avrpm(point_cloud)
+        combined_voxels = high_res_voxels + low_res_voxels
 
-        # Save reconstructed point cloud
+        compressed = encoder(combined_voxels)
+        quantized, _ = entropy_bottleneck(compressed, quantize_mode="symbols")
+        reconstructed = decoder(quantized)
+
         reconstructed_coords = reconstructed.C.cpu().numpy()
         reconstructed_features = reconstructed.F.cpu().numpy()
         output_ply = filename + f'_reconstructed_{idx+1}.ply'
         save_ply(output_ply, reconstructed_coords, reconstructed_features)
 
-        # Compute error metrics
         pc_error_metrics = pc_error(filedir, output_ply, res=res, normal=True, show=False)
         print('D1 PSNR:', pc_error_metrics["c[0] PSNR (p2point)"][0])
 
@@ -93,8 +101,9 @@ if __name__ == '__main__':
     parser.add_argument('--ckptdir', type=str, default='checkpoints/r0.pth', help='Path to checkpoint directory')
     parser.add_argument('--outdir', type=str, default='output')
     parser.add_argument('--resultdir', type=str, default='results')
+    parser.add_argument('--channel', type=str, choices=['Y', 'U', 'V'], required=True, help="YUV channel to process")
     parser.add_argument('--scaling_factor', type=float, default=1.0)
     parser.add_argument('--res', type=int, default=1024)
     args = parser.parse_args()
 
-    test(args.filedir, args.ckptdir, args.outdir, args.resultdir, args.scaling_factor, args.res)
+    test(args.filedir, args.ckptdir, args.outdir, args.resultdir, args.channel, args.scaling_factor, args.res)
